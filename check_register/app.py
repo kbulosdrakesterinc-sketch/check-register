@@ -22,6 +22,9 @@ FIELD_LABELS = {
 }
 
 DATE_EXTRA_CHAR_SPACING_PX = 1
+DATE_YEAR_GROUP_PADDING_MM = 1
+DATE_YEAR_DIGIT_PADDING_MM = (0, 0.5, 1.5, 2.5)
+CONTROLS_PANE_HEIGHT = 300
 
 
 class CheckRegisterApp(tk.Tk):
@@ -47,6 +50,9 @@ class CheckRegisterApp(tk.Tk):
         self.feed_offset_y_mm = tk.DoubleVar(value=0)
         self.show_preview_labels = tk.BooleanVar(value=False)
         self._formatting_amount = False
+        self.payee_options: list[str] = []
+        self.payee_matches: list[str] = []
+        self.payee_suggestion_index = -1
 
         self.vars = {
             "printer": tk.StringVar(),
@@ -71,13 +77,15 @@ class CheckRegisterApp(tk.Tk):
         self.refresh_preview()
 
     def _build_ui(self) -> None:
-        root = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        root = ttk.Frame(self)
         root.pack(fill=tk.BOTH, expand=True)
 
-        controls = ttk.Frame(root, padding=12)
-        preview = ttk.Frame(root, padding=12)
-        root.add(controls, weight=1)
-        root.add(preview, weight=2)
+        controls = ttk.Frame(root, padding=(12, 8))
+        preview = ttk.Frame(root, padding=(12, 6))
+        controls.configure(height=CONTROLS_PANE_HEIGHT)
+        controls.pack_propagate(False)
+        controls.pack(fill=tk.X)
+        preview.pack(fill=tk.BOTH, expand=True)
 
         self._build_controls(controls)
         self._build_preview(preview)
@@ -86,16 +94,52 @@ class CheckRegisterApp(tk.Tk):
         notebook = ttk.Notebook(parent)
         notebook.pack(fill=tk.BOTH, expand=True)
 
-        entry_tab = ttk.Frame(notebook, padding=10)
-        format_tab = ttk.Frame(notebook, padding=10)
-        history_tab = ttk.Frame(notebook, padding=10)
-        notebook.add(entry_tab, text="Check Entry")
-        notebook.add(format_tab, text="Format")
+        entry_container, entry_tab = self._scrollable_tab(notebook, padding=(4, 4))
+        format_container, format_tab = self._scrollable_tab(notebook, padding=(8, 4))
+        history_tab = ttk.Frame(notebook, padding=(8, 4))
+        notebook.add(entry_container, text="Check Entry")
+        notebook.add(format_container, text="Format")
         notebook.add(history_tab, text="History")
 
         self._build_entry_tab(entry_tab)
         self._build_format_tab(format_tab)
         self._build_history_tab(history_tab)
+
+    def _scrollable_tab(self, parent: ttk.Notebook, padding: tuple[int, int]) -> tuple[ttk.Frame, ttk.Frame]:
+        container = ttk.Frame(parent)
+        canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        content = ttk.Frame(canvas, padding=padding)
+        window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def update_scroll_region(_event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def fit_content_width(event: tk.Event) -> None:
+            canvas.itemconfigure(window_id, width=event.width)
+
+        content.bind("<Configure>", update_scroll_region)
+        canvas.bind("<Configure>", fit_content_width)
+
+        def bind_mousewheel(_event: tk.Event) -> None:
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def unbind_mousewheel(_event: tk.Event) -> None:
+            canvas.unbind_all("<MouseWheel>")
+
+        def on_mousewheel(event: tk.Event) -> None:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind("<Enter>", bind_mousewheel)
+        canvas.bind("<Leave>", unbind_mousewheel)
+        content.bind("<Enter>", bind_mousewheel)
+        content.bind("<Leave>", unbind_mousewheel)
+
+        return container, content
 
     def _build_entry_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -103,35 +147,26 @@ class CheckRegisterApp(tk.Tk):
         row = 0
         self._label(parent, "Printer", row)
         self.printer_combo = ttk.Combobox(parent, textvariable=self.vars["printer"], state="readonly")
-        self.printer_combo.grid(row=row, column=1, sticky="ew", pady=4)
+        self.printer_combo.grid(row=row, column=1, sticky="ew", pady=2)
         self.printer_combo.bind("<<ComboboxSelected>>", lambda _event: self._update_printer_status())
-        ttk.Button(parent, text="Refresh", command=self._load_printers).grid(row=row, column=2, padx=(6, 0))
-
-        row += 1
-        self._label(parent, "Printer Status", row)
         self.printer_status_label = ttk.Label(parent, textvariable=self.printer_status, foreground="#555")
-        self.printer_status_label.grid(row=row, column=1, columnspan=2, sticky="w", pady=4)
-
-        row += 1
-        self._label(parent, "LAN/Wi-Fi Printer", row)
-        ttk.Entry(parent, textvariable=self.network_printer_path).grid(row=row, column=1, sticky="ew", pady=4)
-        ttk.Button(parent, text="Connect", command=self._connect_network_printer).grid(row=row, column=2, padx=(6, 0))
+        self.printer_status_label.grid(row=row, column=2, sticky="w", padx=(8, 0), pady=2)
+        ttk.Button(parent, text="Refresh", command=self._load_printers).grid(row=row, column=3, padx=(8, 0))
 
         row += 1
         self._label(parent, "Check Format", row)
         self.template_combo = ttk.Combobox(parent, textvariable=self.vars["template"], state="readonly")
-        self.template_combo.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
+        self.template_combo.grid(row=row, column=1, columnspan=3, sticky="ew", pady=2)
         self.template_combo.bind("<<ComboboxSelected>>", lambda _event: self._select_template())
 
         row += 1
         self._label(parent, "Font", row)
         families = sorted(font.families())
         self.font_combo = ttk.Combobox(parent, textvariable=self.vars["font_family"], values=families)
-        self.font_combo.grid(row=row, column=1, sticky="ew", pady=4)
-        ttk.Spinbox(parent, from_=7, to=24, textvariable=self.vars["font_size"], width=6).grid(row=row, column=2, padx=(6, 0))
+        self.font_combo.grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+        ttk.Spinbox(parent, from_=7, to=24, textvariable=self.vars["font_size"], width=6).grid(row=row, column=3, padx=(6, 0))
 
         for label, key in [
-            ("Check No.", "check_number"),
             ("Date", "date"),
             ("Payee", "payee"),
             ("Amount", "amount"),
@@ -141,43 +176,54 @@ class CheckRegisterApp(tk.Tk):
             row += 1
             self._label(parent, label, row)
             if key == "payee":
-                widget = ttk.Combobox(parent, textvariable=self.vars[key])
-                self.payee_combo = widget
+                widget = ttk.Entry(parent, textvariable=self.vars[key])
+                self.payee_entry = widget
+                widget.bind("<KeyRelease>", self._filter_payee_options)
+                widget.bind("<Down>", self._move_payee_suggestion_down)
+                widget.bind("<Up>", self._move_payee_suggestion_up)
+                widget.bind("<Return>", self._accept_payee_suggestion)
+                widget.bind("<Escape>", self._hide_payee_suggestions)
             elif key == "amount_words":
                 widget = ttk.Entry(parent, textvariable=self.vars[key])
             else:
                 widget = ttk.Entry(parent, textvariable=self.vars[key])
-            widget.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
+            widget.grid(row=row, column=1, columnspan=3, sticky="ew", pady=2)
+            if key == "payee":
+                self.payee_suggestion_listbox = tk.Listbox(parent, height=4, exportselection=False)
+                self.payee_suggestion_listbox.grid(row=row + 1, column=1, columnspan=3, sticky="ew", pady=(0, 2))
+                self.payee_suggestion_listbox.grid_remove()
+                self.payee_suggestion_listbox.bind("<ButtonRelease-1>", self._accept_clicked_payee_suggestion)
+                row += 1
             if key == "amount":
                 self.amount_entry = widget
 
-        row += 1
-        ttk.Checkbutton(
-            parent,
-            text="Use e-signature image only after bank approval",
-            variable=self.vars["use_signature"],
-            command=self.refresh_preview,
-        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(12, 2))
+        # row += 1
+        # ttk.Checkbutton(
+        #     parent,
+        #     text="Use e-signature image only after bank approval",
+        #     variable=self.vars["use_signature"],
+        #     command=self.refresh_preview,
+        # ).grid(row=row, column=0, columnspan=4, sticky="w", pady=(6, 1))
 
-        row += 1
-        self._label(parent, "Signature File", row)
-        ttk.Entry(parent, textvariable=self.signature_path).grid(row=row, column=1, sticky="ew", pady=4)
-        ttk.Button(parent, text="Browse", command=self._browse_signature).grid(row=row, column=2, padx=(6, 0))
+        # row += 1
+        # self._label(parent, "Signature File", row)
+        # ttk.Entry(parent, textvariable=self.signature_path).grid(row=row, column=1, columnspan=2, sticky="ew", pady=2)
+        # ttk.Button(parent, text="Browse", command=self._browse_signature).grid(row=row, column=3, padx=(6, 0))
 
         row += 1
         actions = ttk.Frame(parent)
-        actions.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(18, 0))
+        actions.grid(row=row, column=0, columnspan=4, sticky="ew", pady=(8, 0))
         ttk.Button(actions, text="Generate PDF", command=self.generate_pdf).pack(side=tk.LEFT)
         ttk.Button(actions, text="Print", command=self.print_check).pack(side=tk.LEFT, padx=8)
 
         row += 1
         self._label(parent, "Print Status", row)
         self.print_status_label = ttk.Label(parent, textvariable=self.print_status, foreground="#555")
-        self.print_status_label.grid(row=row, column=1, columnspan=2, sticky="w", pady=(14, 0))
+        self.print_status_label.grid(row=row, column=1, columnspan=3, sticky="w", pady=(6, 0))
 
         self.status = tk.StringVar(value="Ready")
         row += 1
-        ttk.Label(parent, textvariable=self.status, foreground="#555").grid(row=row, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(parent, textvariable=self.status, foreground="#555").grid(row=row, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
     def _build_format_tab(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
@@ -283,13 +329,12 @@ class CheckRegisterApp(tk.Tk):
         actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         ttk.Button(actions, text="Refresh History", command=self._load_history).pack(side=tk.LEFT)
 
-        columns = ("printed_at", "check_number", "check_date", "payee", "amount", "printer", "template", "pdf_path")
-        self.history_tree = ttk.Treeview(parent, columns=columns, show="headings", height=16)
+        columns = ("printed_at", "check_date", "payee", "amount", "printer", "template", "pdf_path")
+        self.history_tree = ttk.Treeview(parent, columns=columns, show="headings", height=7)
         self.history_tree.grid(row=1, column=0, sticky="nsew")
 
         headings = {
             "printed_at": "Printed At",
-            "check_number": "Check No.",
             "check_date": "Date",
             "payee": "Payee",
             "amount": "Amount",
@@ -299,7 +344,6 @@ class CheckRegisterApp(tk.Tk):
         }
         widths = {
             "printed_at": 140,
-            "check_number": 90,
             "check_date": 90,
             "payee": 170,
             "amount": 100,
@@ -324,7 +368,7 @@ class CheckRegisterApp(tk.Tk):
         self.canvas.bind("<Configure>", lambda _event: self.refresh_preview())
 
     def _label(self, parent: ttk.Frame, text: str, row: int) -> None:
-        ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", pady=4, padx=(0, 8))
+        ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", pady=2, padx=(0, 8))
 
     def _wire_updates(self) -> None:
         self.vars["amount"].trace_add("write", lambda *_args: self._on_amount_change())
@@ -461,7 +505,6 @@ class CheckRegisterApp(tk.Tk):
                 tk.END,
                 values=(
                     record.printed_at,
-                    record.check_number,
                     record.check_date,
                     record.payee,
                     record.amount,
@@ -473,8 +516,80 @@ class CheckRegisterApp(tk.Tk):
         self._load_payees()
 
     def _load_payees(self) -> None:
-        if hasattr(self, "payee_combo"):
-            self.payee_combo["values"] = self.store.payees()
+        if hasattr(self, "payee_entry"):
+            self.payee_options = self.store.payees()
+
+    def _filter_payee_options(self, event: tk.Event) -> None:
+        if event.keysym in {"Escape", "Return", "Tab", "Up", "Down", "Left", "Right"}:
+            return
+        if not hasattr(self, "payee_suggestion_listbox"):
+            return
+
+        typed = self.vars["payee"].get().strip().lower()
+        if typed:
+            matches = [payee for payee in self.payee_options if typed in payee.lower()]
+        else:
+            matches = self.payee_options
+
+        self._show_payee_suggestions(matches)
+
+    def _show_payee_suggestions(self, matches: list[str]) -> None:
+        self.payee_matches = matches[:8]
+        self.payee_suggestion_index = 0 if self.payee_matches else -1
+        self.payee_suggestion_listbox.delete(0, tk.END)
+        for payee in self.payee_matches:
+            self.payee_suggestion_listbox.insert(tk.END, payee)
+
+        if self.payee_matches:
+            self.payee_suggestion_listbox.selection_set(self.payee_suggestion_index)
+            self.payee_suggestion_listbox.grid()
+        else:
+            self.payee_suggestion_listbox.grid_remove()
+
+        if hasattr(self, "payee_entry"):
+            self.payee_entry.focus_set()
+
+    def _move_payee_suggestion_down(self, _event: tk.Event) -> str:
+        self._move_payee_suggestion(1)
+        return "break"
+
+    def _move_payee_suggestion_up(self, _event: tk.Event) -> str:
+        self._move_payee_suggestion(-1)
+        return "break"
+
+    def _move_payee_suggestion(self, step: int) -> None:
+        if not self.payee_matches:
+            self._show_payee_suggestions(self.payee_options)
+            return
+        self.payee_suggestion_index = (self.payee_suggestion_index + step) % len(self.payee_matches)
+        self.payee_suggestion_listbox.selection_clear(0, tk.END)
+        self.payee_suggestion_listbox.selection_set(self.payee_suggestion_index)
+        self.payee_suggestion_listbox.see(self.payee_suggestion_index)
+        self.payee_entry.focus_set()
+
+    def _accept_payee_suggestion(self, _event: tk.Event | None = None) -> str:
+        if 0 <= self.payee_suggestion_index < len(self.payee_matches):
+            self.vars["payee"].set(self.payee_matches[self.payee_suggestion_index])
+            self._hide_payee_suggestions()
+            self.payee_entry.icursor(tk.END)
+            self.refresh_preview()
+            return "break"
+        return ""
+
+    def _accept_clicked_payee_suggestion(self, _event: tk.Event) -> None:
+        selection = self.payee_suggestion_listbox.curselection()
+        if selection:
+            self.payee_suggestion_index = int(selection[0])
+            self._accept_payee_suggestion()
+
+    def _hide_payee_suggestions(self, _event: tk.Event | None = None) -> str:
+        if hasattr(self, "payee_suggestion_listbox"):
+            self.payee_suggestion_listbox.grid_remove()
+        self.payee_matches = []
+        self.payee_suggestion_index = -1
+        if hasattr(self, "payee_entry"):
+            self.payee_entry.focus_set()
+        return "break"
 
     def _select_template(self) -> None:
         selected = self.store.template_by_name(self.vars["template"].get())
@@ -715,7 +830,10 @@ class CheckRegisterApp(tk.Tk):
             if field == "date" and field_width and len(text) > 1:
                 for index, (char, slot) in enumerate(self._date_print_slots(text)):
                     self.canvas.create_text(
-                        x + self._date_slot_x(slot, field_width, scale) + index * DATE_EXTRA_CHAR_SPACING_PX,
+                        x
+                        + self._date_slot_x(slot, field_width, scale)
+                        + index * DATE_EXTRA_CHAR_SPACING_PX
+                        + self._date_group_padding_mm(index) * scale,
                         y,
                         text=char,
                         anchor="nw",
@@ -748,6 +866,12 @@ class CheckRegisterApp(tk.Tk):
 
     def _date_slot_x(self, slot: int, field_width: float, scale: float) -> float:
         return field_width * scale * slot / 9
+
+    def _date_group_padding_mm(self, index: int) -> float:
+        if index < 4:
+            return 0
+        year_index = min(index - 4, len(DATE_YEAR_DIGIT_PADDING_MM) - 1)
+        return DATE_YEAR_GROUP_PADDING_MM + DATE_YEAR_DIGIT_PADDING_MM[year_index]
 
     def _pdf_output_path(self) -> Path:
         check_no = self.vars["check_number"].get().strip() or "draft"

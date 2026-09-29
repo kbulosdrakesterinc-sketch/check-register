@@ -5,6 +5,8 @@ from typing import Any
 
 
 DATE_EXTRA_CHAR_SPACING_PX = 1
+DATE_YEAR_GROUP_PADDING_MM = 1
+DATE_YEAR_DIGIT_PADDING_MM = (0, 0.5, 1.5, 2.5)
 
 
 PRINTER_STATUS_MESSAGES = {
@@ -221,7 +223,12 @@ def print_check_direct(
             if field == "date" and field_width and len(text) > 1:
                 for index, (char, slot) in enumerate(_date_print_slots(text)):
                     draw.text(
-                        (px_x(x_mm + _date_slot_x(slot, field_width)) + index * DATE_EXTRA_CHAR_SPACING_PX, px_y(y_mm)),
+                        (
+                            px_x(x_mm + _date_slot_x(slot, field_width))
+                            + index * DATE_EXTRA_CHAR_SPACING_PX
+                            + px_x(_date_group_padding_mm(index)),
+                            px_y(y_mm),
+                        ),
                         char,
                         fill=text_color,
                         font=draw_font,
@@ -306,6 +313,13 @@ def _date_print_slots(text: str) -> list[tuple[str, int]]:
 
 def _date_slot_x(slot: int, field_width: float) -> float:
     return field_width * slot / 9
+
+
+def _date_group_padding_mm(index: int) -> float:
+    if index < 4:
+        return 0
+    year_index = min(index - 4, len(DATE_YEAR_DIGIT_PADDING_MM) - 1)
+    return DATE_YEAR_GROUP_PADDING_MM + DATE_YEAR_DIGIT_PADDING_MM[year_index]
 
 
 def print_pdf(pdf_path: Path, printer_name: str | None) -> None:

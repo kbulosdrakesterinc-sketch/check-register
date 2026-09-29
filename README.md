@@ -7,7 +7,6 @@ A local Python desktop app for preparing and printing checks with configurable c
 - Select an installed printer.
 - Remember and reselect the latest printer used when reopening the app.
 - Show whether the selected printer is available, offline, busy, or needs attention.
-- Connect a LAN/Wi-Fi shared printer by entering a Windows printer share path.
 - Show print progress while generating the PDF and sending the print request.
 - View recent printed checks in a History tab.
 - Reuse previous payees from an editable Payee dropdown.
@@ -39,6 +38,12 @@ Data is stored in `%LOCALAPPDATA%\CheckRegister` by default. For portable/testin
 
 The built-in **Default PH Check** template is refreshed from the app's code defaults whenever the app starts. Custom duplicated templates are not changed.
 
+## Moving To Another Windows PC
+
+Copy the whole project folder to the other computer, then double-click `run_check_register.bat`. The launcher creates a local `.venv` folder and installs the required Python packages on that machine.
+
+If the app cannot start, the launcher now keeps the window open and shows the error. The usual causes are Python not installed, no internet connection for package installation, or printer-driver packages blocked by Windows policy.
+
 ## Check Image Preview
 
 Open the **Format** tab, choose **Check Image**, and select a scanned image of the blank bank check. The app stretches that image to the selected check width/height, then overlays the preview text using the configured millimeter positions.
@@ -49,13 +54,11 @@ The check image is for preview/calibration only. Generated PDFs still print only
 
 When printing, the app shows the current stage: generating the PDF, sending the direct print job, sent, cancelled, or failed. The **Print** button sends text directly to the selected Windows printer, which is more reliable than handing a PDF to an external PDF reader.
 
-Printed checks are recorded in the **History** tab with check number, date, payee, amount, printer, template, generated PDF path, and print timestamp.
+Printed checks are recorded in the **History** tab with date, payee, amount, printer, template, generated PDF path, and print timestamp.
 
 ## LAN And Wi-Fi Printers
 
-Printers connected by USB, Wi-Fi, or LAN should appear in the printer list after they are installed in Windows. Click **Refresh** after adding a printer.
-
-For a shared network printer, enter a Windows share path such as `\\OFFICE-PC\CheckPrinter` in **LAN/Wi-Fi Printer**, then click **Connect**. For direct IP printers, add the printer in Windows first so the correct printer driver is installed, then refresh the app.
+Printers connected by USB, Wi-Fi, or LAN should appear in the printer list after they are installed in Windows. Click **Refresh** after adding a printer. For shared or direct IP printers, add the printer in Windows first so the correct printer driver is installed, then refresh the app.
 
 ## Paper Feed And Date Boxes
 

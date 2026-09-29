@@ -2,6 +2,8 @@ from pathlib import Path
 
 
 DATE_EXTRA_CHAR_SPACING_PT = 1
+DATE_YEAR_GROUP_PADDING_MM = 1
+DATE_YEAR_DIGIT_PADDING_MM = (0, 0.5, 1.5, 2.5)
 
 
 def mm_to_points(value: float) -> float:
@@ -65,7 +67,14 @@ def generate_check_pdf(
         field_width = float(position.get("w", 0))
         if key == "date" and field_width and len(text) > 1:
             for index, (char, slot) in enumerate(date_print_slots(text)):
-                pdf.drawString(x + mm_to_points(date_slot_x(slot, field_width)) + index * DATE_EXTRA_CHAR_SPACING_PT, y, char)
+                pdf.drawString(
+                    x
+                    + mm_to_points(date_slot_x(slot, field_width))
+                    + index * DATE_EXTRA_CHAR_SPACING_PT
+                    + mm_to_points(date_group_padding_mm(index)),
+                    y,
+                    char,
+                )
         else:
             pdf.drawString(x, y, text)
 
@@ -91,3 +100,10 @@ def date_print_slots(text: str) -> list[tuple[str, int]]:
 
 def date_slot_x(slot: int, field_width: float) -> float:
     return field_width * slot / 9
+
+
+def date_group_padding_mm(index: int) -> float:
+    if index < 4:
+        return 0
+    year_index = min(index - 4, len(DATE_YEAR_DIGIT_PADDING_MM) - 1)
+    return DATE_YEAR_GROUP_PADDING_MM + DATE_YEAR_DIGIT_PADDING_MM[year_index]
